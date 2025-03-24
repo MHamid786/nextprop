@@ -103,7 +103,7 @@ export default function SearchBarProperties({
     <div className="mb-6">
       <div className="flex flex-col gap-4">
         {/* Search Mode Toggle */}
-        <div className="flex gap-2 mb-2">
+        {/* <div className="flex gap-2 mb-2">
           <button
             onClick={() => handleSearchModeToggle("query")}
             className={`px-4 py-2 rounded-md ${searchMode === "query" ? "bg-purple-700 text-white" : "bg-gray-200 text-gray-700"}`}
@@ -118,7 +118,7 @@ export default function SearchBarProperties({
           >
             Search by Zip Code
           </button>
-        </div>
+        </div> */}
 
         {/* Main Search Bar */}
         <div className="flex flex-col sm:flex-row gap-3 items-center">
@@ -187,7 +187,7 @@ export default function SearchBarProperties({
           <div className="bg-gray-50 p-4 rounded-lg shadow-inner">
             <h3 className="text-sm font-medium text-gray-700 mb-3">Advanced Filters</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {/* Price Range */}
+              {/* Price Range
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Price Range</label>
                 <div className="flex gap-2">
@@ -213,7 +213,7 @@ export default function SearchBarProperties({
                   />
                 </div>
                 {priceError && <p className="text-red-500 text-sm mt-1">{priceError}</p>}
-              </div>
+              </div> */}
 
               {/* Days on Zillow */}
               <div>
@@ -224,15 +224,15 @@ export default function SearchBarProperties({
                   disabled={isScraping}
                   className="w-full rounded-md border-0 py-2 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-blue-600"
                 >
-                  <option value="7">Last 7 days</option>
-                  <option value="30">Last 30 days</option>
-                  <option value="90">Last 90 days</option>
-                  <option value="180">Last 180 days</option>
+                  <option value="1wk">Last 7 days</option>
+                  <option value="1mo">Last 30 days</option>
+                  <option value="3mo">Last 90 days</option>
+                  <option value="6mo">Last 180 days</option>
                 </select>
               </div>
             </div>
 
-            {/* Listing Status */}
+            {/* Listing Status
             <div className="mt-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">Listing Status</label>
               <div className="flex flex-wrap gap-4">
@@ -277,7 +277,7 @@ export default function SearchBarProperties({
                   <span className="ml-2 text-sm text-gray-700">Sold</span>
                 </label>
               </div>
-            </div>
+            </div> */}
           </div>
         )}
       </div>

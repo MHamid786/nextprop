@@ -29,7 +29,7 @@ if (isNaN(DAILY_LIMIT) || DAILY_LIMIT <= 0) {
 console.log("DAILY_LIMIT in production:", DAILY_LIMIT);
 
 export default function PropertiesPage() {
-  const [searchMode, setSearchMode] = useState<"query" | "zipcode">("query"); // Add this line
+  const [searchMode, setSearchMode] = useState<"query" | "zipcode">("zipcode"); // Add this line
   const [isScraping, setIsScraping] = useState(false);
   const [progressPercentage, setProgressPercentage] = useState(0);
   const [successCount, setSuccessCount] = useState(0);
@@ -39,7 +39,7 @@ export default function PropertiesPage() {
   const [zipCodes, setZipCodes] = useState<string[]>(["33101"]);
   const [priceMin, setPriceMin] = useState<number>(500000);
   const [priceMax, setPriceMax] = useState<number>(700000);
-  const [daysOnZillow, setDaysOnZillow] = useState<string>("90");
+  const [daysOnZillow, setDaysOnZillow] = useState<string>("3mo");
   const [forSaleByAgent, setForSaleByAgent] = useState<boolean>(true);
   const [forSaleByOwner, setForSaleByOwner] = useState<boolean>(false);
   const [forRent, setForRent] = useState<boolean>(false);
@@ -213,32 +213,24 @@ export default function PropertiesPage() {
     };
   };
 
-  const _searchByQuery = async (limit: number) => {
+  const supportedDaysOnZillow = [
+    '1wk', // 7 days
+    '2wk', // 14 days
+    '1mo', // 30 days
+    '2mo', // 60 days
+    '3mo', // 90 days
+    '6mo', // 180 days
+  ]
+  const _searchByZipCodes = async (limit: number) => {
+
     return await fetch("/api/properties", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        query: searchQuery,
         limit,
-      }),
-    });
-  }
-
-  const _searchByZipCodes = async (limit: number) => {
-    return await fetch("/api/properties/search-by-zipcode", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query: searchQuery,
-        limit,
-        zipCodes,
-        priceMin,
-        priceMax,
-        daysOnZillow,
-        forSaleByAgent,
-        forSaleByOwner,
-        forRent,
-        sold,
+        zipCode: zipCodes[0],
+        propertyTypes: ['house'],
+        'days': daysOnZillow,
       }),
     });
   }
@@ -304,20 +296,16 @@ export default function PropertiesPage() {
     };
 
     // Fetch properties from Zillow API
+    // Fetch properties from Zillow API
     const fetchProperties = async (limit: number): Promise<ZillowProperty[]> => {
-      if (searchMode == "zipcode") {
-        if (zipCodes.length <= 0) {
-          toast.error("No zip codes provided");
-          throw new Error("No zip code(s) provided");
-        }
-      } else if (searchMode == "query") {
-        if (searchQuery.length <= 0) {
-          toast.error("No search query provided");
-          throw new Error("No search query provided");
-        }
+
+      if (zipCodes.length <= 0) {
+        toast.error("No zip codes provided");
+        throw new Error("No zip code(s) provided");
       }
+
       setCurrentStatus(`Starting to scrape ${limit} properties...`);
-      const searchResponse = searchMode === "zipcode" ? await _searchByZipCodes(limit) : await _searchByQuery(limit);
+      const searchResponse = await _searchByZipCodes(limit);
       const searchURLbody = await searchResponse.json();
       const searchURLs = searchURLbody.urls;
 
@@ -329,21 +317,87 @@ export default function PropertiesPage() {
         );
       }
 
-      const detailResponse = await fetch("/api/properties/detail", {
+      const detailResponse = await fetch("/api/properties/redfin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ urls: searchURLs, limit }),
       });
 
-      const data: ScrapedResult = await detailResponse.json();
-      console.log("Scraped data:", data);
-
-      if (!data.success || !data.properties) {
-        throw new Error(data.error || "No properties returned from Apify");
-      }
-
-      return data.properties;
+      const data = await detailResponse.json();
+      return convertToZillowProperty(data).properties || [];
     };
+
+    const getPhoto = (photos: any) => {
+      try {
+        const url = photos[0].photoUrls || {};
+        return url.fullScreenPhotoUrl;
+
+      } catch (e) {
+        console.error("Error getting photo:", e);
+        return null;
+      }
+    }
+    function convertToZillowProperty(mockResults: any[]): ScrapedResult {
+      try {
+        const properties: ZillowProperty[] = (mockResults || []).map((result = {}) => {
+          const mainHouseInfo = result.mainHouseInfo || {};
+          const photos = result.mediaBrowserInfo.photos || [];
+          const publicRecords = result.publicRecordsInfo?.latestListingInfo || {};
+          const listingAgents = Array.isArray(mainHouseInfo.listingAgents) ? mainHouseInfo.listingAgents : [];
+          const listingAgent = listingAgents[0]?.agentInfo || {};
+          const listingBroker = listingAgents[0] || {};
+          const propertyAddress = mainHouseInfo.propertyAddress || {};
+
+          // Safely construct street address from propertyAddress components
+          const streetComponents = [
+            propertyAddress.streetNumber,
+            propertyAddress.directionalPrefix,
+            propertyAddress.streetName,
+            propertyAddress.streetType,
+            propertyAddress.directionalSuffix
+          ].filter(Boolean); // Remove null/undefined values
+          const constructedStreetAddress = streetComponents.length > 0 ? streetComponents.join(' ').trim() : null;
+
+          // Fallback address parsing
+          const fullAddress = mainHouseInfo.fullStreetAddress || '';
+          const addressParts = fullAddress.split(', ').filter(Boolean);
+          const stateZip = (addressParts[2] || '').split(' ').filter(Boolean);
+
+          return {
+            agentName: listingAgent.agentName ?? null,
+            agentPhoneNumber: listingBroker.brokerPhoneNumber?.phoneNumber ?? null,
+            brokerName: listingBroker.brokerName ?? null,
+            brokerPhoneNumber: listingBroker.brokerPhoneNumber?.phoneNumber ?? null,
+            agentEmail: listingBroker.brokerEmailAddress ?? null,
+            brokerEmail: listingBroker.brokerEmailAddress ?? null,
+            homeType: publicRecords.propertyTypeName ?? null,
+            streetAddress: constructedStreetAddress ?? mainHouseInfo.streetAddress ?? null,
+            city: propertyAddress.city ?? (addressParts[1] || null),
+            state: propertyAddress.stateOrProvinceCode ?? (stateZip[0] || null),
+            zipcode: propertyAddress.postalCode ?? (stateZip[1] || null),
+            price: null,
+            listingSubType: null,
+            zestimate: null,
+            bedrooms: publicRecords.beds != null ? String(publicRecords.beds) : null,
+            bathrooms: publicRecords.baths != null ? String(publicRecords.baths) : null,
+            description: null,
+            timeOnZillow: null,
+            url: result.scraperInput ?? null,
+            imageUrl: getPhoto(photos)
+          };
+        });
+
+        return {
+          success: true,
+          properties: properties
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error occurred during conversion'
+        };
+      }
+    }
     // Process scraped properties
     const processProperties = async (properties: ZillowProperty[]) => {
       const totalProperties = properties.length;

@@ -11,13 +11,13 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { query, limit } = await req.json();
+    const { limit, days, zipCode, propertyTypes } = await req.json();
 
-    if (!query) {
-      throw new Error("Please provide a valid address or query");
+    if (!zipCode) {
+      throw new Error("Please provide a valid zipcode");
     }
-    
-    const searchURLs = await zillowSearchScraper(query, API_TOKEN, limit);
+
+    const searchURLs =  await redfinSearchScraper(zipCode, days, propertyTypes, API_TOKEN, limit);
 
     console.log(`[SearchURLS]: ${JSON.stringify(searchURLs)}`);
     return NextResponse.json({
@@ -38,46 +38,16 @@ export async function POST(req: Request) {
   }
 }
 
-const zillowSearchScraper = async (q: string, API_TOKEN: string, limit: number) => {
-  const API_URL = 'https://api.apify.com/v2/acts/X46xKaa20oUA1fRiP/runs';
+const redfinSearchScraper = async (zipCode: string, daysOnMarket: string, propertyTypes: string, API_TOKEN: string, limit: number) => {
 
-  function buildZillowUSAURL(query: string, sortBy = "days", daysOnZillow = 90) {
-    const usaBounds = {
-      west: -125.0,
-      east: -66.9,
-      south: 24.4,
-      north: 49.4
-    };
+  const API_URL = 'https://api.apify.com/v2/acts/fSNRlNbcFgtHBFBE9/runs';
 
-    const searchQueryState = {
-      isMapVisible: true,
-      mapBounds: usaBounds,
-      usersSearchTerm: query,
-      filterState: {
-        sort: { value: sortBy },
-        tow: { value: false },
-        mf: { value: false },
-        con: { value: false },
-        land: { value: false },
-        apa: { value: false },
-        manu: { value: false },
-        apco: { value: false },
-        doz: { value: daysOnZillow }
-      },
-      isListVisible: true,
-      mapZoom: 12
-    };
-    return searchQueryState;
-  }
-
-  const encodedQuery = encodeURIComponent(JSON.stringify(buildZillowUSAURL(q)));
   const payload = {
-    extractionMethod: "MAP_MARKERS",
     maxItems: limit,
-    maxTotalChargeUsd: 0.02,
+    "zoomIn": true,
     searchUrls: [
       {
-        url: `https://www.zillow.com/homes/for_sale/?searchQueryState=${encodedQuery}`,
+        url: `https://www.redfin.com/zipcode/${zipCode}/filter/min-days-on-market=${daysOnMarket}`,
         method: "GET"
       }
     ]
@@ -133,13 +103,19 @@ const zillowSearchScraper = async (q: string, API_TOKEN: string, limit: number) 
     console.log(`Fetched from Search URLs`, JSON.stringify(items));
 
     const filteredSearchResults = items
-      .map((item) => item.detailUrl)
+      .map((item: any) => item.url)
       .filter(Boolean);
 
-    console.log(`[zillowSearchScraper] filteredSearchResults: ${JSON.stringify(filteredSearchResults)} [zillowSearchScraper]`)
+    console.log(`[RedfinSearchScraper] filteredSearchResults: ${JSON.stringify(filteredSearchResults)} [redfinSearchScraper]`)
     return filteredSearchResults;
   } catch (error) {
     console.error('Error in Zillow search scraper:', error);
     throw error;
   }
 };
+
+const mock = async (zipCode: string, daysOnMarket: string, propertyTypes: string, API_TOKEN: string, limit: number) => {
+  return [
+    "https://www.redfin.com/FL/Miami/1725-NW-19th-St-33125/home/42711515", "https://www.redfin.com/FL/Mims/3245-Keith-Ln-32754/home/122403872"
+  ]
+}

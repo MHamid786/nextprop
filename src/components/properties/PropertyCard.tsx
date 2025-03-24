@@ -52,8 +52,7 @@ export default function PropertyCard({ property, onClick }: PropertyCardProps) {
         ) : (
           <div className="absolute inset-0 flex items-center justify-center">
             <img 
-              src="
-              /images/house-placeholder.svg" 
+              src="/images/house-placeholder.svg" 
               alt="Property" 
               className="w-full h-full object-cover"
             />
