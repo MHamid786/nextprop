@@ -11,18 +11,21 @@ interface MessageModalProps {
   contact: GHLContact | null;
   user: User | null;
   messageContent: {
+    selectedPhoneNumber: string;
     sms: string;
     emailSubject: string;
     emailBody: string;
   };
   setMessageContent: React.Dispatch<
     React.SetStateAction<{
+      selectedPhoneNumber: string;
       sms: string;
       emailSubject: string;
       emailBody: string;
     }>
   >;
   onSend: () => Promise<void>;
+  isBulkSend: boolean;
 }
 
 interface User {
@@ -109,6 +112,8 @@ export default function MessageModal({
   messageContent,
   setMessageContent,
   onSend,
+  isBulkSend,
+
 }: MessageModalProps) {
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
 
@@ -120,12 +125,23 @@ export default function MessageModal({
     
     const template = TEMPLATES.find(t => t.id === templateId);
     if (template) {
-      const replacedContent = {
-        sms: template.sms ? replacePlaceholders(template.sms, contact, user) : '',
-        emailSubject: template.emailSubject ? replacePlaceholders(template.emailSubject, contact, user) : '',
-        emailBody: template.emailBody ? replacePlaceholders(template.emailBody, contact, user) : ''
-      };
-      setMessageContent(replacedContent);
+      if (isBulkSend) {
+        // For bulk sending, keep the placeholders intact
+        setMessageContent({
+          selectedPhoneNumber: messageContent.selectedPhoneNumber,
+          sms: template.sms || '',
+          emailSubject: template.emailSubject || '',
+          emailBody: template.emailBody || ''
+        });
+      } else {
+        // For individual sending, replace placeholders
+        const replacedContent = {
+          sms: template.sms ? replacePlaceholders(template.sms, contact, user) : '',
+          emailSubject: template.emailSubject ? replacePlaceholders(template.emailSubject, contact, user) : '',
+          emailBody: template.emailBody ? replacePlaceholders(template.emailBody, contact, user) : ''
+        };
+        setMessageContent(replacedContent);
+      }
     }
   };
 
@@ -148,11 +164,11 @@ export default function MessageModal({
         </button>
 
         <h3 className="text-xl font-bold text-gray-900 mb-2">
-          {actionType === 'sms' ? 'Send SMS' : 'Send Email'}
+          {actionType === 'sms' ? `Send SMS ${isBulkSend? 'Bulk' : ''}` : 'Send Email'}
         </h3>
         <p className="text-sm text-gray-500 mb-6">
           {actionType === 'sms'
-            ? 'Send a quick SMS to your contact'
+            ? `Send a quick SMS to your ${isBulkSend? 'contacts in this current pipeline`s stage' : 'contact'}`
             : 'Compose a professional email'}
         </p>
 
@@ -162,8 +178,11 @@ export default function MessageModal({
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">From</label>
                 <select
+                  id="fromPhoneNumber"
+                  onSelect={(e) => setMessageContent({...messageContent, selectedPhoneNumber: e.target.value })}
+                  value={messageContent.selectedPhoneNumber}
                   className="w-full border border-gray-200 rounded-lg p-2.5 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all"
-                  value={user?.phoneNumbers?.[0]?.phoneNumber || ''}
+                  defaultValue={user?.phoneNumbers?.[0]?.phoneNumber || ''}
                 >
                   {(user?.phoneNumbers || []).length > 0 ? (
                     user!.phoneNumbers!.map((number) => (
@@ -171,6 +190,7 @@ export default function MessageModal({
                         {number.phoneNumber}
                       </option>
                     ))
+                
                   ) : (
                     <option value="">No number available</option>
                   )}
@@ -178,12 +198,25 @@ export default function MessageModal({
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">To</label>
-                <input
-                  type="text"
-                  className="w-full border border-gray-200 rounded-lg p-2.5 bg-gray-50 text-gray-700"
-                  value={contact?.phone || ''}
-                  disabled
-                />
+                {isBulkSend ? (
+                  <div className="w-full border border-gray-200 rounded-lg p-2.5 bg-gray-50 text-gray-700 max-h-24 overflow-y-auto">
+                    
+                    <div className="flex flex-wrap gap-1">
+                      {/* Display first 5 numbers as examples */}
+                      <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-blue-100 text-blue-800">
+                        All contacts in current pipeline stage
+                      </span>
+                      
+                    </div>
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    className="w-full border border-gray-200 rounded-lg p-2.5 bg-gray-50 text-gray-700"
+                    value={contact?.phone || ''}
+                    disabled
+                  />
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Message</label>
@@ -206,6 +239,12 @@ export default function MessageModal({
                     onChange={(e) => setMessageContent({ ...messageContent, sms: e.target.value })}
                     rows={4}
                   />
+                  {isBulkSend && (
+                    <div className="mt-2 text-xs text-gray-500">
+                      <p>Placeholders like {'{{'}'first_name{'}},'} {'{{'}'last_name{'}},'} {'{{'}'user_name{'}},'} will be replaced with actual values for each recipient.</p>
+                      <p className="mt-1">Example: &quot;Hi {'{{'}'first_name{'}}'}&quot; will become &quot;Hi John&quot; for a contact named John.</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </>
@@ -275,13 +314,13 @@ export default function MessageModal({
           <button
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm transition-all disabled:opacity-50"
             onClick={onSend}
-            disabled={
+            disabled={  isBulkSend? false :
               actionType === 'sms'
-                ? !messageContent.sms || !((user?.phoneNumbers?.length ?? 0) > 0)
+                ? (!messageContent.sms || !((user?.phoneNumbers?.length ?? 0) > 0))
                 : !messageContent.emailBody
             }
           >
-            Send {actionType === 'sms' ? 'SMS' : 'Email'}
+            Send {actionType === 'sms' ? isBulkSend? 'BULK SMS' : 'SMS' : isBulkSend? 'BULK EMAIL' :'Email'}
           </button>
         </div>
       </div>

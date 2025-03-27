@@ -18,6 +18,7 @@ import MessageModal from '@/components/dashboard/MessageModal';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { GHLContact, GHLOpportunity, GHLPipeline, GHLPipelineResponse, GHLStage, Opportunity, PipelineData, PipelineStage } from '@/types/dashboard';
 import OpportunityEditModal from '@/components/dashboard/OpportunityEditModal';
+import toast from 'react-hot-toast';
 
 interface PaginationState {
   page: number;
@@ -46,6 +47,7 @@ export default function LeadsPage() {
   const [apiConfigured, setApiConfigured] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [isBulkSendMode, setIsBulkSendMode] = useState<{ stageId: string, isOpen: boolean }>({ stageId: '', isOpen: false });
   const [filters, setFilters] = useState<{
     value: { min: string; max: string };
     source: string[];
@@ -74,10 +76,12 @@ export default function LeadsPage() {
     contact: null,
   });
   const [messageContent, setMessageContent] = useState<{
+    selectedPhoneNumber: string;
     sms: string;
     emailSubject: string;
     emailBody: string;
   }>({
+    selectedPhoneNumber: '',
     sms: '',
     emailSubject: '',
     emailBody: '',
@@ -198,7 +202,7 @@ export default function LeadsPage() {
           const opportunitiesResponse = await fetch(
             `/api/pipelines/search?pipelineId=${pipelineId}&stageId=${stage.id}&page=${initialPagination.page}&limit=${initialPagination.limit}`
           );
-          
+
           if (!opportunitiesResponse.ok) {
             throw new Error(`Error fetching opportunities for stage ${stage.id}`);
           }
@@ -255,16 +259,16 @@ export default function LeadsPage() {
         prev.map((p) =>
           p.id === pipelineId
             ? {
-                ...p,
-                stages: stagesWithOpps,
-                totalOpportunities: stagesWithOpps.reduce((sum, stage) => sum + stage.count, 0),
-              }
+              ...p,
+              stages: stagesWithOpps,
+              totalOpportunities: stagesWithOpps.reduce((sum, stage) => sum + stage.count, 0),
+            }
             : p
         )
       );
-      
+
       setLoadedPipelines((prev) => new Set(prev).add(pipelineId));
-      
+
       if (pipelineId === selectedPipeline) {
         setOpportunities(stagesWithOpps);
       }
@@ -472,7 +476,29 @@ export default function LeadsPage() {
     );
     setIsEditOpportunityModalOpen(false);
   };
-
+  function getConvoType(convo: any) {
+    /// if phone and email both are available go for lastMessageType ?? type
+    /// if phone is available only return Sms
+    /// if email is avialable only return Email
+    if (convo.email && convo.phone) {
+      return convo.lastMessageType ?? convo.type;
+    } else if (convo.email) {
+      return 'TYPE_EMAIL'
+    } else {
+      return 'TYPE_PHONE'
+    }
+  }
+  const getAppropriateType = (type: string) => {
+    switch (type) {
+      case 'TYPE_PHONE':
+        return 'SMS';
+      case 'TYPE_EMAIL':
+      case 'TYPE_CUSTOM_EMAIL':
+        return 'Email';
+      default:
+        return 'SMS';
+    }
+  };
   const handleCommunication = async (
     opportunityId: string,
     actionType: 'voicemail' | 'sms' | 'call' | 'email' | 'optout'
@@ -490,6 +516,49 @@ export default function LeadsPage() {
         contact: opportunity.contact || null,
       });
     }
+     const messageType = getAppropriateType(actionType); 
+     const payload = { 
+                type: messageType,
+                body: messageContent.sms || messageContent.emailBody,
+                text: messageContent.sms || messageContent.emailBody,
+                message: messageContent.sms || messageContent.emailBody,
+                contactId: opportunity!.contact!.id,
+                ...(messageType === 'SMS' && {
+                  toNumber: opportunity.contact!.phone,
+                  fromNumber: messageContent.selectedPhoneNumber,
+                }),
+                ...(messageType === 'Email' && {
+                  html: messageContent.emailBody,
+                  emailTo: opportunity.contact!.email,
+                  subject: messageContent.emailSubject,
+                  emailFrom: 'no-reply@gmail.com', 
+                }),
+              };
+              try {
+                const response = await fetch('/api/conversations/messages', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(payload),
+                });
+                if (!response.ok) {
+                  throw new Error('Failed to send communication');
+                }
+                const conversation = await response.json();
+                toast.success('Communication sent successfully');
+                setMessageModal({
+                  isOpen: false,
+                  actionType: null,
+                  opportunityId: null,
+                  contact: null,
+                }); 
+              } catch (error) {
+                toast.error('Failed to send communication');
+                console.error('Error sending communication:', error);
+              } finally {
+                setLoadingOperation({ id: null, type: null });
+              }
   };
 
   const handleMoveOpportunity = async (opportunityId: string, targetStageId: string) => {
@@ -540,6 +609,93 @@ export default function LeadsPage() {
 
   const isPipelineLoading = selectedPipeline && !loadedPipelines.has(selectedPipeline);
 
+  const handleBulkActionSMS = async () => {
+    const stageId = isBulkSendMode.stageId;
+    const availableOpportunities = getProcessedOpportunities(stageId);
+    if (availableOpportunities.length === 0) {
+      setError('No opportunities available for bulk SMS.');
+      return;
+    }
+
+    // Get the selected phone number from the form (or default to first one)
+    const selectedPhoneNumber = document.getElementById('fromPhoneNumber') as HTMLSelectElement;
+    const fromNumber = selectedPhoneNumber?.value || user?.phoneNumbers?.[0]?.phoneNumber;
+    
+    if (!fromNumber) {
+      toast.error('No phone number available to send from');
+      return;
+    }
+
+    let totalSent = 0;
+    let failedCount = 0;
+    
+    try {
+      for (const opportunity of availableOpportunities) {
+        try { 
+          const contact = opportunity.contact;
+          if (!contact || !contact.phone) continue;
+          
+          // Replace placeholders for each contact individually
+          let personalizedMessage = messageContent.sms;
+          
+          // Contact replacements
+          personalizedMessage = personalizedMessage.replace(/{{first_name}}/g, 
+            contact.firstName || contact.name?.split(' ')[0] || 'there');
+          personalizedMessage = personalizedMessage.replace(/{{last_name}}/g, 
+            contact.lastName || '');
+          
+          // User replacements
+          personalizedMessage = personalizedMessage.replace(/{{user_name}}/g, 
+            user?.name || user?.firstName || 'Team Member');
+          personalizedMessage = personalizedMessage.replace(/{{user_email}}/g, 
+            user?.email || 'no-reply@company.com');
+          personalizedMessage = personalizedMessage.replace(/{{user_phone}}/g, 
+            user?.phone || fromNumber || 'N/A');
+            
+          
+          await sendSMS(contact, fromNumber, personalizedMessage);
+          totalSent++;
+        } catch (error) {
+          console.error(`Error sending SMS to opportunity ${opportunity.id}:`, error);
+          failedCount++;
+        }
+      }
+
+      setIsBulkSendMode({ stageId: '', isOpen: false });
+      
+      if (failedCount > 0) {
+        toast.success(`${totalSent} SMS sent successfully, ${failedCount} failed`);
+      } else {
+        toast.success(`${totalSent} SMS sent successfully!`);
+      }
+    } catch (error) {
+      console.error('Error in bulk SMS operation:', error);
+      toast.error('Failed to complete bulk SMS operation');
+    }
+  };
+
+  const sendSMS = async (contact: any, fromNumber: string, message: string) => {
+    const payload = {
+      type: "SMS",
+      body: message,
+      text: message,
+      message: message,
+      contactId: contact.id,
+      toNumber: contact!.phone,
+      fromNumber: fromNumber,
+    };
+    const response = await fetch(
+      `/api/conversations/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(`${data.message}`);
+    }
+
+  }
   return (
     <DashboardLayout title="Leads">
       <div className="container mx-auto px-4 py-8">
@@ -577,7 +733,7 @@ export default function LeadsPage() {
           />
           <div className="px-4 py-6 sm:px-6 lg:px-8 flex-1">
             <AutomationPreview className="mb-6" />
-            
+
             {isLoading || loading ? (
               <div className="text-center py-8 text-gray-500">Loading...</div>
             ) : error ? (
@@ -618,6 +774,7 @@ export default function LeadsPage() {
                   loadingOpportunityId={loadingOperation.id}
                   pagination={pagination[selectedPipeline]}
                   loadingStates={loadingStates[selectedPipeline]}
+                  setIsBulkSendMode={setIsBulkSendMode}
                 />
               ) : (
                 <OpportunityList
@@ -646,6 +803,20 @@ export default function LeadsPage() {
             />
           )}
           <MessageModal
+            isOpen={isBulkSendMode.isOpen}
+            onClose={() => {
+              setIsBulkSendMode({stageId: '', isOpen: false});
+              setMessageModal({ isOpen: false, actionType: null, opportunityId: null, contact: null });
+            }}
+            actionType="sms"
+            contact={null}
+            user={user}
+            messageContent={messageContent}
+            setMessageContent={setMessageContent}
+            onSend={handleBulkActionSMS}
+            isBulkSend={true}
+          />
+          <MessageModal
             isOpen={messageModal.isOpen}
             onClose={() => setMessageModal({ isOpen: false, actionType: null, opportunityId: null, contact: null })}
             actionType={messageModal.actionType}
@@ -656,6 +827,7 @@ export default function LeadsPage() {
             onSend={async () => {
               handleCommunication(messageModal.opportunityId!, messageModal.actionType!);
             }}
+            isBulkSend={false}
           />
           <OpportunityEditModal
             isOpen={isEditOpportunityModalOpen}

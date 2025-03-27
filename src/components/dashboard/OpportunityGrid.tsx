@@ -56,6 +56,8 @@ interface OpportunityGridProps {
   loadingOpportunityId: string | null;
   pagination: Record<string, PaginationState>;
   loadingStates: Record<string, boolean>;
+  // {stageId: string, isOpen: boolean}
+  setIsBulkSendMode: React.Dispatch<React.SetStateAction<{stageId: string, isOpen: boolean}>>;
 }
 
 interface DroppableStageProps {
@@ -95,6 +97,7 @@ export default function OpportunityGrid({
   loadingOpportunityId,
   pagination,
   loadingStates,
+  setIsBulkSendMode,
 }: OpportunityGridProps) {
   const [activeOpportunity, setActiveOpportunity] = useState<Opportunity | null>(null);
 
@@ -195,7 +198,15 @@ export default function OpportunityGrid({
               <div className="text-base font-semibold text-gray-900">
                 {stage.name} <span className="text-gray-600">({stage.count})</span>
               </div>
-            </div>
+              <div className="text-base font-semibold text-gray-900">
+                <button
+                  onClick={() => setIsBulkSendMode({stageId: stage.id, isOpen: true})}
+                  className="text-purple-600 hover:text-gray-800"
+                >
+                  Bulk Action
+                </button>
+              </div>
+            </div> 
             <DroppableStage
               id={stage.id}
               isEmpty={getProcessedOpportunities(stage.id).length === 0}

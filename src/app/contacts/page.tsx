@@ -1356,7 +1356,7 @@ export default function ContactsPage() {
                 pipelineStageId: stageId,
                 contactId: contact.id,
                 status: "open",
-                name: `${contact.firstName} ${contact.zipCode || contact.street || contact.city || contact.state || ' - bulk'}`.trim()
+                name: `${contact.firstName} - ${contact.address1 || contact.zipCode || contact.street || contact.city || contact.state || ' - bulk'}`.trim()
               }),
             });
 
