@@ -316,7 +316,7 @@ export default function EnhancedBulkUploadForm({ onContactsSelect, isLoading = f
     // For now, just log the importRequestId
     setShowPopup(false); // Close popup after checking progress
     // Navigate to a progress page or fetch progress status
-      window.location.href = '/bulk-actions';
+    window.location.href = '/bulk-actions';
 
   };
 
@@ -470,7 +470,7 @@ export default function EnhancedBulkUploadForm({ onContactsSelect, isLoading = f
           <div className="bg-white p-6 rounded-md shadow-lg max-w-sm w-full">
             <h3 className="text-lg font-semibold text-gray-800 mb-4">Import in Progress</h3>
             <p className="text-sm text-gray-600 mb-6">
-              Uploading contacts and submitting to pipeline is in progress.
+              Bulk upload is in progress. You can check the progress at any time by clicking the "Check Progress" button.
             </p>
             <div className="flex justify-end space-x-4">
               <button
@@ -481,7 +481,7 @@ export default function EnhancedBulkUploadForm({ onContactsSelect, isLoading = f
               </button>
               <button
                 onClick={handleCheckProgress}
-                className="py-2 px-4 bg-[#7c3aed] text-white rounded-md hover:bg-[#6d28d9]"
+                className="py-2 px-4 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
               >
                 Check Progress
               </button>
